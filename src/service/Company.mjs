@@ -1,18 +1,33 @@
-import Employee from "../dto/Employee.mjs";
-import Manager from "../dto/Manager.mjs";
-import {
-  EMPLOYEE_ALREADY_EXISTS,
-  EMPLOYEE_NOT_FOUND,
-  INVALID_EMPLOYEE_TYPE,
-} from "../exceptions/exceptions.mjs";
-import {readFile,writeFile} from 'node:fs/promises'
 export default class Company {
-  #employees; //key - id, value - Employee {id:123, empl: {123,...}}
-  #departments; //key department, value array of employees working in the department
+  #employees;
+  #departments;
+  #predicate;
+
   constructor() {
     this.#employees = {};
     this.#departments = {};
+    this.#predicate = () => true;
   }
+
+  setPredicate(predicate) {
+    if (typeof predicate !== 'function') {
+      throw new TypeError('Predicate must be a function');
+    }
+    this.#predicate = predicate;
+  }
+
+  [Symbol.iterator]() {
+    return this.#makeEmployeeGenerator();
+  }
+
+  *#makeEmployeeGenerator() {
+    for (const employee of Object.values(this.#employees)) {
+      if (this.#predicate(employee)) {
+        yield employee;
+      }
+    }
+  }
+
   async addEmployee(employee) {
     if (!(employee instanceof Employee)) {
       throw Error(INVALID_EMPLOYEE_TYPE(employee));
@@ -21,19 +36,21 @@ export default class Company {
       throw Error(EMPLOYEE_ALREADY_EXISTS(employee.id));
     }
     this.#employees[employee.id] = employee;
-    this.#addDepartments(employee)
+    this.#addDepartments(employee);
   }
-  #addDepartments(employee){
-    const dep = employee.department;
-    if(!this.#departments[dep]){
-        this.#departments[dep] = [];
 
+  #addDepartments(employee) {
+    const dep = employee.department;
+    if (!this.#departments[dep]) {
+      this.#departments[dep] = [];
     }
     this.#departments[dep].push(employee);
   }
+
   async getEmployee(id) {
     return this.#employees[id] ?? null;
   }
+
   async removeEmployee(id) {
     if (!this.#employees[id]) {
       throw Error(EMPLOYEE_NOT_FOUND(id));
@@ -41,55 +58,49 @@ export default class Company {
     this.#removeDepartments(this.#employees[id]);
     delete this.#employees[id];
   }
-  #removeDepartments(employee){
+
+  #removeDepartments(employee) {
     const employees = this.#departments[employee.department];
-    const index = employees.findIndex(e => e.id === employee.id);
-    employees.splice(index,1);
-    employees.length == 0 && delete this.#departments[employee.department];
-  }
-  async getDepartmentBudget(department) {
-    let res = 0;
-    const employees = this.#departments[department];
-    if(employees) {
-        res = employees.reduce((bud, cur) => bud + cur.computeSalary(),0);
+    const index = employees.findIndex((e) => e.id === employee.id);
+    employees.splice(index, 1);
+    if (employees.length === 0) {
+      delete this.#departments[employee.department];
     }
-    return res;
   }
+
+  async getDepartmentBudget(department) {
+    const employees = this.#departments[department] || [];
+    return employees.reduce((bud, cur) => bud + cur.computeSalary(), 0);
+  }
+
   async getDepartments() {
     return Object.keys(this.#departments).toSorted();
   }
+
   async getManagersWithMostFactor() {
     const managers = Object.values(this.#employees).filter(
       (e) => e instanceof Manager
     );
     managers.sort((m1, m2) => m2.getFactor() - m1.getFactor());
-    const res = [];
-    let index = 0;
-    if (managers.length > 0) {
-      const maxFactor = managers[0].getFactor();
-      while (
-        index < managers.length &&
-        managers[index].getFactor() == maxFactor
-      ) {
-        res.push(managers[index]);
-        index++;
-      }
-    }
+    if (managers.length === 0) return [];
 
-    return res;
+    const maxFactor = managers[0].getFactor();
+    return managers.filter((m) => m.getFactor() === maxFactor);
   }
+
   async saveToFile(fileName) {
     const employeesJSON = JSON.stringify(Object.values(this.#employees));
-    await writeFile(fileName,employeesJSON,'utf8');
+    await writeFile(fileName, employeesJSON, 'utf8');
   }
 
   async restoreFromFile(fileName) {
     const employeesPlain = JSON.parse(await readFile(fileName, 'utf8'));
-    const employees = employeesPlain.map(e => Employee.fromPlainObject(e));
-    employees.forEach(e => this.addEmployee(e));
+    const employees = employeesPlain.map((e) => Employee.fromPlainObject(e));
+    for (const e of employees) {
+      await this.addEmployee(e);
+    }
   }
 }
-
 
 
 
