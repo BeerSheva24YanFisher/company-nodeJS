@@ -1,0 +1,1 @@
+[{"basicSalary":2000,"department":"QA","id":120,"className":"Manager","factor":2},{"basicSalary":1000,"department":"QA","id":123,"className":"WageEmployee","wage":100,"hours":10},{"basicSalary":3000,"department":"Development","id":125,"className":"SalesPerson","wage":100,"hours":10,"percent":0.01,"sales":10000}]
